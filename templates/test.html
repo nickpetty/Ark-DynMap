@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Static Image</title>
+    <link rel="stylesheet" href="https://openlayers.org/en/v4.3.4/css/ol.css" type="text/css">
+    <!-- The line below is only needed for old environments like Internet Explorer and Android 4.x -->
+    <script src="https://cdn.polyfill.io/v2/polyfill.min.js?features=requestAnimationFrame,Element.prototype.classList,URL"></script>
+    <script src="https://openlayers.org/en/v4.3.4/build/ol.js"></script>
+  </head>
+  <body>
+    <div id="map" class="map"></div>
+    <script>
+      // Map views always need a projection.  Here we just want to map image
+      // coordinates directly to map coordinates, so we create a projection that uses
+      // the image extent in pixels.
+      var x = 81;
+      var y = 81;
+      var iconFeature = new ol.Feature({
+        geometry: new ol.geom.Point([ (x-7.2)/.106875, (800-((y-7.2)/.106875))-30 ]), //lon, lat(rev) .106875
+        name: 'Null Island',
+        population: 4000,
+        rainfall: 500
+      });
+
+      var iconStyle = new ol.style.Style({
+        image: new ol.style.Icon(/** @type {olx.style.IconOptions} */ ({
+          anchor: [0.5, 46], //0.5,46
+          anchorXUnits: 'fraction',
+          anchorYUnits: 'pixels',
+          src: 'https://openlayers.org/en/v4.3.4/examples/data/icon.png'
+        }))
+      });
+
+      iconFeature.setStyle(iconStyle);
+
+      var vectorSource = new ol.source.Vector({
+        features: [iconFeature]
+      });
+
+      var vectorLayer = new ol.layer.Vector({
+        source: vectorSource
+      });
+
+
+      var extent = [0, 0, 800, 800];
+      
+      var projection = new ol.proj.Projection({
+        code: 'xkcd-image',
+        units: 'pixels',
+        extent: extent
+      });
+
+      var map = new ol.Map({
+        layers: [
+          new ol.layer.Image({
+            source: new ol.source.ImageStatic({
+              //attributions: '© <a href="http://xkcd.com/license.html">xkcd</a>',
+              url: '../static/arkmap.jpg',
+              projection: projection,
+              imageExtent: extent
+            })
+          }),
+          vectorLayer
+        ],
+
+        target: 'map',
+        view: new ol.View({
+          projection: projection,
+          center: [38,90.3-51],
+          zoom: 1,
+          maxZoom: 8
+        })
+      });
+    </script>
+  </body>
+</html>
