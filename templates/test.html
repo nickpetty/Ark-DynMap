@@ -13,10 +13,10 @@
       // Map views always need a projection.  Here we just want to map image
       // coordinates directly to map coordinates, so we create a projection that uses
       // the image extent in pixels.
-      var x = 81;
-      var y = 81;
+      var x = 56.1;
+      var y = 68.2;
       var iconFeature = new ol.Feature({
-        geometry: new ol.geom.Point([ (x-7.2)/.106875, (800-((y-7.2)/.106875))-30 ]), //lon, lat(rev) .106875
+        geometry: new ol.geom.Point([ (x-7.2)/.106875, (800-((y-7.2)/.106875)) ]), //lon, lat(rev) .106875
         name: 'Null Island',
         population: 4000,
         rainfall: 500
@@ -71,6 +71,8 @@
           maxZoom: 8
         })
       });
+
+      iconFeature.getGeometry().setCoordinates(modifiedCoordinate);
     </script>
   </body>
 </html>
