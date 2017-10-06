@@ -2,6 +2,7 @@ import random
 from flask import Flask, render_template, jsonify
 import srcds as rcon
 from flask_socketio import SocketIO, send, emit
+from decimal import Decimal
 
 
 # 7.2 -- 97.5
@@ -16,23 +17,17 @@ port = 32330
 pw = ""
 
 try:
-	con = rcon.SourceRcon(tayip, port, pw, 15)
+	con = rcon.SourceRcon(tayip, port, pw, 30)
 except:
 	print 'error'
 
-@socketio.on('connect', namespace='/test')
-def test_connect():
-	print 'emitting'
-	socketio.emit('connected', str(random.randint(1,10000)))
 	
-@socketio.on('getplayerpos', namespace='/test')
-def playerpos():
-	emit('playerPositions', {"players":[{'name':'nick', 'coords':[45,45]}]})
+@socketio.on('getPlayerPOS', namespace='/players')
+def playerpos(data):
+
+	emit('playerPosition', {'coords':getPlayerPOSfromSteamID(data['data']['playerID']), 'playerName':data['data']['playerName']})
 
 
-@socketio.on('updateMarkers', namespace='/test')
-def updateCustomMarkers(coords):
-	print coords
 
 def getPlayers():
 	players = con.rcon('listplayers').splitlines()
@@ -45,9 +40,26 @@ def getPlayerPOSfromSteamID(id):
 	coords = str(con.rcon("getplayerpos " + str(id))).strip().split(' ')
 	cleanCoords = []
 	for coord in coords:
-		cleanCoords.append(round((float(coord[2:])/8000)+50, 2)) # convert to Ark map coords
+		try:
+			cleanCoords.append(round((float(coord[2:])/8000)+50, 2)) # convert to Ark map coords
+		except:
+			pass
 	return cleanCoords
 
+
+
+@app.route('/getPlayers')
+def getPlayerPOS_init():
+	activePlayers = getPlayers()
+	playerList = {"players":[]}
+	x = 0
+	while x<(len(activePlayers)):
+		name = activePlayers[x][3:].split(', ')[0]
+		steamid = activePlayers[x][3:].split(', ')[1]
+		playerList["players"].append({"name":name, "coords":getPlayerPOSfromSteamID(steamid), "steamID":steamid})
+		x+=1
+
+	return jsonify(playerList)
 
 
 @app.route('/')
@@ -58,22 +70,9 @@ def index():
 def test_temp():
 	return render_template('test.html')
 
-@app.route('/getplayerpos')
-def getPlayerPOS():
-	activePlayers = getPlayers()
-	playerList = {"players":[]}
-	x = 0
-	while x<(len(activePlayers)):
-		name = activePlayers[x][3:].split(', ')[0]
-		steamid = activePlayers[x][3:].split(', ')[1]
-		playerList["players"].append({"name":name, "coords":getPlayerPOSfromSteamID(steamid)})
-		x+=1
-
-	return jsonify(playerList)
-
 
 if __name__ == '__main__':
-    socketio.run(app, port=9191, debug=True)
+    socketio.run(app, host="0.0.0.0", port="9191", debug=True)
 
 
 # if __name__ == '__main__':

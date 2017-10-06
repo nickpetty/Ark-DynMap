@@ -1,194 +1,97 @@
-// $(document).ready(function(){
-//     var socket = io.connect('http://' + document.domain + ':' + location.port + '/test');
-//     socket.on('my response', function(msg) {
-//         console.log('<p>Received: ' + msg.data + '</p>');
-//     });
-//     $('form#emit').submit(function(event) {
-//         socket.emit('my event', {data: $('#emit_data').val()});
-//         return false;
-//     });
-//     $('form#broadcast').submit(function(event) {
-//         socket.emit('my broadcast event', {data: $('#broadcast_data').val()});
-//         return false;
-//     });
-// });
 
 
+// Phaser
+var game = new Phaser.Game(1024, 768, Phaser.CANVAS, 'gameDiv', { preload: preload, create: create, update: update });
+var socket = io.connect(window.location.hostname +  ':9191/players');
 
-var canvas = document.getElementById('myCanvas');
-var caveCanvas = document.getElementById('caveCanvas');
-var customMarkersCanvas = document.getElementById('customMarkersCanvas');
-var map = canvas.getContext('2d');
-var players = [];
-var clientIDNumber;
+var o_mcamera;
+var map;
+var players = {};
+var x = 70.6;
+var y = 86.1;
 
-document.getElementById('showhidecaves').checked = true;
 
-// var socket = io.connect('http://127.0.0.1:9191/test');
-
-// socket.emit('connect');
-// socket.on('connected', function(idnum){
-// 	clientIDNumber = idnum;
-// 	console.log(clientIDNumber);
-// });
-
-// setInterval(function() {
-// 	socket.emit('getplayerpos');
-// }, 100);
-
-// socket.on('playerPositions' ,function (msg) {
-// 	var colors = ["red", "green", "blue", "yellow"]
-// 	players = msg.players;
-// 	clearMap();
-// 	var x = 0    	
-// 	for (var player in players){
-// 		var coords = players[player]['coords'];
-// 		var playerName = players[player]['name'];
-// 		mapObject(playerName, coords[0], coords[1], colors[x], "player");
-// 		x+=1
-
-// 	}
-// });
-
-mapObject('nick', 81,81, 'red', "player");
-
-function getCursorPosition(event) {
-    var rect = canvas.getBoundingClientRect();
-    var x = event.clientX - rect.left;
-    var y = event.clientY - rect.top;
-    return [((y*.106875)+7.2), ((x*.106875)+7.2)];
+function preload() {
+	game.load.image('map', '../static/assets/arkmap.jpg');
+	game.load.spritesheet('implant', '../static/assets/implant.png');
 }
 
-var mymarker = [];
-var mylatesttap;
-function doubletap(event) {
-   var now = new Date().getTime();
-   var timesince = now - mylatesttap;
-   if((timesince < 600) && (timesince > 0)){
-   	if (mymarker.length <= 0){
-   		customMarkersCanvas.getContext('2d').clearRect(0,0,800,800);
-   	}
-   	var coords = getCursorPosition(event);
-   	mymarker = coords;
-   	socket.emit('updateMarkers', coords);
+function create() {
+	game.world.setBounds(0, 0, 1750, 1600);
 
-   }else{ // single tap
-   			
+	map = game.add.image(0,0,'map');
+	map.scale.setTo(2,2);
+
+	// get players and current position from sse
+	var xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = function() {
+	    if (xhr.readyState == XMLHttpRequest.DONE) {
+	    	var activePlayers = JSON.parse(xhr.responseText)['players'];
+			for (var player in activePlayers){
+				var currentPlayer;
+				var coords = activePlayers[player]['coords'];
+				var playerName = activePlayers[player]['name'];
+				var playerID = activePlayers[player]['steamID'];
+				
+				currentPlayer = game.add.sprite((coords[0]-7.2)/.054685, (coords[1]-7.2)/.054685,'implant');
+				currentPlayer.scale.setTo(.25,.25);
+
+				var text = game.add.text(-100, -80, playerName, {font: "64px Arial", fill: "#ffffff", backgroundColor: "#000000"});
+				currentPlayer.addChild(text);
+
+				var button = document.createElement("button");
+				button.innerHTML = playerName;
+				button.id = playerName;
+
+				var playerButtons = document.getElementById("playerButtons");
+				playerButtons.appendChild(button);
+
+				document.getElementById(playerName).addEventListener("click", function(){
+					game.camera.target = null;
+					game.camera.x = currentPlayer.position.x-300;
+					game.camera.y = currentPlayer.position.y-300;
+					game.camera.follow(players[playerName]['playerObject']);
+				});
+
+				players[playerName] = {'playerObject':currentPlayer, 'playerID':playerID, 'playerName':playerName};			
+			}
+		}
+	}
+	xhr.open('GET', '/getPlayers', true);
+	xhr.send(null);
+}
+
+
+function update() {
+    move_camera_by_pointer(game.input.mousePointer);
+    move_camera_by_pointer(game.input.pointer1);
+}
+
+function move_camera_by_pointer(o_pointer) {
+    if (!o_pointer.timeDown) { return; }
+    if (o_pointer.isDown && !o_pointer.targetObject) {
+        if (o_mcamera) {
+        	game.camera.target = null;
+            game.camera.x += o_mcamera.x - o_pointer.position.x;
+            game.camera.y += o_mcamera.y - o_pointer.position.y;
         }
-
-   mylatesttap = new Date().getTime();
+        o_mcamera = o_pointer.position.clone();
+    }
+    if (o_pointer.isUp) { o_mcamera = null; }
 }
 
 
-document.getElementById('customMarkersCanvas').addEventListener("click", doubletap, false);
-
-function clearMap(){
-	map.clearRect(0,0,800,800);
-}
-
-function mapObject(name, lat, lon, color, type){
-	
-	if (type == "player") {
-		var objectPOS = canvas.getContext('2d');
-		var nameLabel = canvas.getContext('2d');
-		objectPOS.beginPath();
-		objectPOS.arc( (lat-7.2)/.106875, (lon-7.2)/.106875, 2, 0, 2*Math.PI);
-		objectPOS.stroke();
-		objectPOS.fillStyle = color;
-      	objectPOS.fill();
-	
+setInterval(function(){
+	for (var player in players){
+		var myData = {playerID:players[player]['playerID'], playerName:players[player]['playerName']};
+		socket.emit('getPlayerPOS', {data: myData});
+		socket.on('playerPosition', function(msg){
+			var coords = msg.coords;
+			var playerName = msg.playerName;
+			
+			players[playerName]['playerObject'].position.x = (coords[0]-7.2)/.054685
+			players[playerName]['playerObject'].position.y = (coords[1]-7.2)/.054685
+		})
 	}
-	if (type == "cave") {
-		var objectPOS = caveCanvas.getContext('2d');
-		var nameLabel = caveCanvas.getContext('2d');
-		objectPOS.beginPath();
-		objectPOS.arc( (lat-7.2)/.106875, (lon-5)/.106875, 7, 0, 2*Math.PI);
-		objectPOS.fillStyle = color;
-      	objectPOS.fill();
-		objectPOS.stroke();
-	}
-
-	if (type == "customMarker"){
-		var objectPOS = customMarkersCanvas.getContext('2d');
-		var nameLabel = customMarkersCanvas.getContext('2d');
-		name = "";
-		objectPOS.beginPath();
-		objectPOS.arc( (lat-7.2)/.106875, (lon-7.2)/.106875, 5, 0, 2*Math.PI);
-		objectPOS.stroke();
-		objectPOS.fillStyle = color;
-	  	objectPOS.fill();
-
-	}
-
-	nameLabel.fillStyle = "black";
-	nameLabel.font = "bold 10px Arial";
-	if (type == "player") {
-		nameLabel.fillText(name, ((lat-7.2)/.106875)-10, (lon-7.2)/.106875-8, 100, 5);
-	}
-	if (type == "cave") {
-		nameLabel.fillText(name, ((lat-7.2)/.106875)-20, (lon-7.2)/.106875, 100, 5);
-	}
-
-}
-
-
-// function getPlayers(){
-// 	var colors = ["red", "green", "blue", "yellow"]
-// 	var xhr = new XMLHttpRequest();
-// 	xhr.onreadystatechange = function() {
-// 	    if (xhr.readyState == XMLHttpRequest.DONE) {
-// 	    	var players = JSON.parse(xhr.responseText)['players'];
-// 	    	clearMap();
-// 	    	var x = 0    	
-// 	    	for (var player in players){
-// 	    		var coords = players[player]['coords'];
-// 	    		var playerName = players[player]['name'];
-// 	    		mapObject(playerName, coords[0], coords[1], colors[x], "player");
-// 	    		x+=1
-
-// 	    	}
-// 	    }
-// 	}
-// 	xhr.open('GET', '/getplayerpos', true);
-// 	xhr.send(null);
-// }
-
-
-function mapCaves() {
-	var caves = [{"name":"Central - Clever", "coords":[41.6,47], "color":"green"},
-				 {"name":"North West - Skylord", "coords":[19.2,19], "color":"green"},
-				 {"name":"Lower South - Hunter", "coords":[80.2,53.5], "color":"green"},
-				 {"name":"North East - Devourer", "coords":[14.8,85.3], "color":"green"},
-				 {"name":"Upper South - Pack", "coords":[68.2,56.1], "color":"green"},
-				 {"name":"South East - Massive", "coords":[70.6,86.1], "color":"green"},
-				 {"name":"Swmap Cave - Immune", "coords":[62.7,37.3], "color":"red"},
-				 {"name":"Snow Cave - Strong", "coords":[29.1,31.8], "color":"red"},
-				 {"name":"Caverns of Lost Faith - Brute", "coords":[53.7,10.4], "color":"cyan"},
-				 {"name":"Caverns of Lost Hope - Cunning", "coords":[45.9,88.9], "color":"blue"},
-				 {"name":"Tek Cave", "coords":[42.8,39.2], "color":"orange"}]
-
-	for (var cave in caves) {
-		caves[cave]
-		mapObject(caves[cave]["name"], caves[cave]["coords"][1], caves[cave]["coords"][0], caves[cave]["color"], "cave");
-	}
-
-}
-
-
-function caves(){
-	var checkbox = document.getElementById('showhidecaves');
-	var cavemap = document.getElementById('caveMap');
-
-	if (checkbox.checked == true) {
-		cavemap.style.display = "block";
-	}
-
-	if (checkbox.checked == false) {
-		cavemap.style.display = "none";
-	}
-	
-}
-
-
-mapCaves()
+}, 1500)
 
